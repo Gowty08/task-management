@@ -74,6 +74,14 @@ const api = {
   createTask(data, uid) { const db = this._read(); const t = { id: uid_(), createdBy: uid, createdAt: Date.now(), updatedAt: Date.now(), ...data }; function uid_() { return uid() } db.tasks.push(t); const p = db.projects.find(p => p.id === t.projectId); if (p) { p.updatedAt = Date.now() } this._write(db); return t; },
   updateTask(id, patch) { const db = this._read(); const t = db.tasks.find(t => t.id === id); if (!t) throw new Error('Task not found'); Object.assign(t, patch, { updatedAt: Date.now() }); this._write(db); return t; },
   deleteTask(id) { const db = this._read(); db.tasks = db.tasks.filter(t => t.id !== id); this._write(db); return { ok: true } },
+  deleteProject(id) {
+  const db = this._read();
+  db.projects = db.projects.filter(p => p.id !== id);    // remove the project
+  db.tasks = db.tasks.filter(t => t.projectId !== id);   // also remove tasks in that project
+  this._write(db);
+  return { ok: true };
+},
+
 };
 
 /******************** Auth Context ********************/
@@ -182,6 +190,13 @@ const ProjectList = ({ onOpen, onCreate }) => {
     onOpen(p.id);
   };
 
+  const del = (id, name) => {
+    if (confirm(`Delete project "${name}"?`)) {
+      api.deleteProject(id);
+      setProjects(api.projectsForUser(user.id));
+    }
+  };
+
   return (
     <div className="container">
       <div className="flex space-between" style={{ margin: '12px 0' }}>
@@ -192,13 +207,18 @@ const ProjectList = ({ onOpen, onCreate }) => {
       <div className="grid cols-3">
         {projects.map(p => (
           <div key={p.id} className="card">
-            <h3>{p.name}</h3>
+            <div className="flex space-between">
+              <h3>{p.name}</h3>
+              <button className="icon-btn" title="Delete Project" onClick={() => del(p.id, p.name)}>🗑️</button>
+            </div>
             <p className="muted">{p.description || '—'}</p>
             <div className="flex space-between">
               <span className="badge">Members: {p.members.length}</span>
               <span className="badge">Updated: {new Date(p.updatedAt).toLocaleString()}</span>
             </div>
-            <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => onOpen(p.id)}>Open</button></div>
+            <div style={{ marginTop: 12 }}>
+              <button className="btn primary" onClick={() => onOpen(p.id)}>Open</button>
+            </div>
           </div>
         ))}
       </div>
@@ -227,6 +247,7 @@ const ProjectList = ({ onOpen, onCreate }) => {
     </div>
   );
 };
+
 
 const MemberPicker = ({ onPick }) => {
   const [q, setQ] = useState('');

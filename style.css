@@ -222,6 +222,21 @@ h3 {
     width: min(720px, 92vw)
 }
 
+.icon-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  color: #dc2626;
+  transition: transform 0.2s ease;
+}
+
+.icon-btn:hover {
+  transform: scale(1.2);
+  color: #b91c1c;
+}
+
+
 /* Auth */
 .auth {
     max-width: 420px;
