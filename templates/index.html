@@ -2,7 +2,7 @@
 <html lang="en">
 
 <head>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Task Management System — React (Single File)</title>
@@ -17,7 +17,7 @@
 
 <body>
   <div id="root"></div>
-  <script type="text/babel" src="/static/style.js"></script>
+  <script type="text/babel" src="{{ url_for('static', filename='style.js') }}"></script>
 </body>
 
 </html> 
