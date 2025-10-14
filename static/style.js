@@ -20,7 +20,21 @@ const seedIfEmpty = () => {
   };
   const p = demo.projects[0].id;
   const cats = ['Frontend', 'Backend', 'Design'];
-  const makeTask = (t, st, pr, pg) => ({ id: uid(), projectId: p, title: t, description: t + ' details', category: cats[Math.floor(Math.random() * cats.length)], priority: pr, status: st, dueDate: new Date(Date.now() + 86400000 * (2 + Math.random() * 10)).toISOString().slice(0, 10), progress: pg, assignees: [userId], createdBy: userId, createdAt: Date.now(), updatedAt: Date.now() });
+  const makeTask = (t, st, pr, pg) => ({ 
+    id: uid(), 
+    projectId: p, 
+    title: t, 
+    description: t + ' details', 
+    category: cats[Math.floor(Math.random() * cats.length)], 
+    priority: pr, 
+    status: st, 
+    dueDate: new Date(Date.now() + 86400000 * (2 + Math.random() * 10)).toISOString().slice(0, 10), 
+    progress: pg, 
+    assignees: [userId], 
+    createdBy: userId, 
+    createdAt: Date.now(), 
+    updatedAt: Date.now() 
+  });
   demo.tasks.push(
     makeTask('Landing hero', 'backlog', 'medium', 10),
     makeTask('Auth API', 'in_progress', 'high', 40),
@@ -56,7 +70,7 @@ const api = {
   createProject({ name, description }, userId) {
     const db = this._read();
     const p = {
-      id: uid(), // ✅ use global uid function directly
+      id: uid(),
       name,
       description,
       owner: userId,
@@ -68,20 +82,87 @@ const api = {
     this._write(db);
     return p;
   },
-  addMember(projectId, userId) { const db = this._read(); const p = db.projects.find(p => p.id === projectId); if (!p) throw new Error('Project not found'); if (!p.members.includes(userId)) p.members.push(userId); p.updatedAt = Date.now(); this._write(db); return p; },
+  addMember(projectId, userId) { 
+    const db = this._read(); 
+    const p = db.projects.find(p => p.id === projectId); 
+    if (!p) throw new Error('Project not found'); 
+    if (!p.members.includes(userId)) p.members.push(userId); 
+    p.updatedAt = Date.now(); 
+    this._write(db); 
+    return p; 
+  },
 
-  tasks({ projectId, status, category, q }) { const db = this._read(); let t = db.tasks.filter(t => t.projectId === projectId); if (status) t = t.filter(x => x.status === status); if (category) t = t.filter(x => x.category === category); if (q) { const r = new RegExp(q, 'i'); t = t.filter(x => r.test(x.title) || r.test(x.description)); } return t.sort((a, b) => b.updatedAt - a.updatedAt); },
-  createTask(data, uid) { const db = this._read(); const t = { id: uid_(), createdBy: uid, createdAt: Date.now(), updatedAt: Date.now(), ...data }; function uid_() { return uid() } db.tasks.push(t); const p = db.projects.find(p => p.id === t.projectId); if (p) { p.updatedAt = Date.now() } this._write(db); return t; },
-  updateTask(id, patch) { const db = this._read(); const t = db.tasks.find(t => t.id === id); if (!t) throw new Error('Task not found'); Object.assign(t, patch, { updatedAt: Date.now() }); this._write(db); return t; },
-  deleteTask(id) { const db = this._read(); db.tasks = db.tasks.filter(t => t.id !== id); this._write(db); return { ok: true } },
+  tasks({ projectId, status, category, q }) { 
+    const db = this._read(); 
+    let t = db.tasks.filter(t => t.projectId === projectId); 
+    if (status) t = t.filter(x => x.status === status); 
+    if (category) t = t.filter(x => x.category === category); 
+    if (q) { 
+      const r = new RegExp(q, 'i'); 
+      t = t.filter(x => r.test(x.title) || r.test(x.description)); 
+    } 
+    return t.sort((a, b) => b.updatedAt - a.updatedAt); 
+  },
+  
+  createTask(data, userId) { 
+    const db = this._read(); 
+    const task = { 
+      id: uid(), // ✅ Fixed: using the global uid function directly
+      projectId: data.projectId,
+      title: data.title,
+      description: data.description,
+      category: data.category,
+      priority: data.priority,
+      status: data.status,
+      dueDate: data.dueDate,
+      progress: data.progress,
+      assignees: data.assignees || [userId],
+      createdBy: userId,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    db.tasks.push(task);
+    
+    // Update project's updatedAt timestamp
+    const project = db.projects.find(p => p.id === task.projectId);
+    if (project) {
+      project.updatedAt = Date.now();
+    }
+    
+    this._write(db);
+    return task;
+  },
+  
+  updateTask(id, patch) { 
+    const db = this._read(); 
+    const task = db.tasks.find(t => t.id === id); 
+    if (!task) throw new Error('Task not found'); 
+    Object.assign(task, patch, { updatedAt: Date.now() });
+    
+    // Update project's updatedAt timestamp
+    const project = db.projects.find(p => p.id === task.projectId);
+    if (project) {
+      project.updatedAt = Date.now();
+    }
+    
+    this._write(db); 
+    return task; 
+  },
+  
+  deleteTask(id) { 
+    const db = this._read(); 
+    db.tasks = db.tasks.filter(t => t.id !== id); 
+    this._write(db); 
+    return { ok: true } 
+  },
+  
   deleteProject(id) {
-  const db = this._read();
-  db.projects = db.projects.filter(p => p.id !== id);    // remove the project
-  db.tasks = db.tasks.filter(t => t.projectId !== id);   // also remove tasks in that project
-  this._write(db);
-  return { ok: true };
-},
-
+    const db = this._read();
+    db.projects = db.projects.filter(p => p.id !== id);
+    db.tasks = db.tasks.filter(t => t.projectId !== id);
+    this._write(db);
+    return { ok: true };
+  },
 };
 
 /******************** Auth Context ********************/
@@ -248,7 +329,6 @@ const ProjectList = ({ onOpen, onCreate }) => {
   );
 };
 
-
 const MemberPicker = ({ onPick }) => {
   const [q, setQ] = useState('');
   const [res, setRes] = useState([]);
@@ -266,18 +346,46 @@ const MemberPicker = ({ onPick }) => {
 };
 
 const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
-  const [v, setV] = useState({ title: '', description: '', category: 'General', priority: 'medium', status: 'backlog', dueDate: '', progress: 0, assignees: [], ...initial });
-  useEffect(() => setV(prev => ({ ...prev, ...initial })), [initial.id]);
+  const [v, setV] = useState({ 
+    title: '', 
+    description: '', 
+    category: 'General', 
+    priority: 'medium', 
+    status: 'backlog', 
+    dueDate: '', 
+    progress: 0, 
+    assignees: [], 
+    ...initial 
+  });
+  
+  useEffect(() => {
+    if (initial.id) {
+      setV(prev => ({ ...prev, ...initial }));
+    }
+  }, [initial.id]);
+
   const set = (k) => (e) => setV({ ...v, [k]: e.target.type === 'number' ? Number(e.target.value) : e.target.value });
+
+  const handleSubmit = () => {
+    // Validate required fields
+    if (!v.title.trim()) {
+      alert('Task title is required');
+      return;
+    }
+    onSubmit(v);
+  };
+
   return (
     <div className="card">
       <h3>{initial.id ? 'Edit Task' : 'New Task'}</h3>
       <div className="grid cols-2">
-        <div><label>Title</label><input className="input" value={v.title} onChange={set('title')} /></div>
-        <div><label>Category</label><input className="input" value={v.category} onChange={set('category')} /></div>
+        <div><label>Title *</label><input className="input" value={v.title} onChange={set('title')} placeholder="Enter task title" /></div>
+        <div><label>Category</label><input className="input" value={v.category} onChange={set('category')} placeholder="e.g. Frontend" /></div>
         <div><label>Priority</label>
           <select className="select" value={v.priority} onChange={set('priority')}>
-            <option value="low">low</option><option value="medium">medium</option><option value="high">high</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
           </select>
         </div>
         <div><label>Status</label>
@@ -290,11 +398,11 @@ const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
         </div>
         <div><label>Due Date</label><input type="date" className="input" value={v.dueDate || ''} onChange={set('dueDate')} /></div>
         <div><label>Progress (%)</label><input type="number" min="0" max="100" className="input" value={v.progress} onChange={set('progress')} /></div>
-        <div style={{ gridColumn: '1/3' }}><label>Description</label><textarea rows="3" className="input" value={v.description} onChange={set('description')} /></div>
+        <div style={{ gridColumn: '1/3' }}><label>Description</label><textarea rows="3" className="input" value={v.description} onChange={set('description')} placeholder="Task description..." /></div>
       </div>
       <div className="flex" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
         <button className="btn" onClick={onCancel}>Cancel</button>
-        <button className="btn primary" onClick={() => onSubmit(v)}>{initial.id ? 'Save' : 'Create'}</button>
+        <button className="btn primary" onClick={handleSubmit}>{initial.id ? 'Save' : 'Create'}</button>
       </div>
     </div>
   );
@@ -308,7 +416,9 @@ const TaskCard = ({ task, onEdit, onDelete, onMove }) => (
     </div>
     <div className="muted" style={{ marginTop: 4 }}>{task.category}</div>
     {task.dueDate && <div className="muted">Due: {task.dueDate}</div>}
-    <div className="progress" style={{ marginTop: 8 }}><span style={{ width: Math.max(0, Math.min(100, task.progress)) + '%' }} /></div>
+    <div className="progress" style={{ marginTop: 8 }}>
+      <span style={{ width: Math.max(0, Math.min(100, task.progress)) + '%' }} />
+    </div>
     <div className="flex" style={{ justifyContent: 'space-between', marginTop: 8 }}>
       <div className="muted" style={{ fontSize: 12 }}>Assignees: {task.assignees.length}</div>
       <div className="flex">
@@ -351,77 +461,185 @@ const ProjectPage = ({ projectId, onBack }) => {
   const [editing, setEditing] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
 
-  const refresh = () => setTasks(api.tasks({ projectId, q: query, status: filter.status, category: filter.category }));
-  useEffect(() => { refresh() }, [query, filter.status, filter.category]);
+  const refresh = () => {
+    const filteredTasks = api.tasks({ 
+      projectId, 
+      q: query, 
+      status: filter.status, 
+      category: filter.category 
+    });
+    setTasks(filteredTasks);
+  };
 
-  const create = (payload) => { api.createTask({ ...payload, projectId, assignees: payload.assignees || [user.id] }, user.id); setShowForm(false); refresh(); };
-  const save = (payload) => { api.updateTask(editing.id, payload); setEditing(null); setShowForm(false); refresh(); };
-  const del = (id) => { api.deleteTask(id); refresh(); };
-  const move = (task, dir) => {
-    const idx = columns.findIndex(c => c.key === task.status);
-    const next = dir === 'left' ? idx - 1 : idx + 1; if (next < 0 || next >= columns.length) return; api.updateTask(task.id, { status: columns[next].key }); refresh();
+  useEffect(() => { 
+    refresh();
+  }, [query, filter.status, filter.category]);
+
+  const createTask = (payload) => { 
+    try {
+      api.createTask(payload, user.id);
+      setShowForm(false);
+      refresh();
+    } catch (error) {
+      console.error('Error creating task:', error);
+      alert('Failed to create task: ' + error.message);
+    }
+  };
+
+  const saveTask = (payload) => { 
+    try {
+      api.updateTask(editing.id, payload);
+      setEditing(null);
+      setShowForm(false);
+      refresh();
+    } catch (error) {
+      console.error('Error updating task:', error);
+      alert('Failed to update task: ' + error.message);
+    }
+  };
+
+  const deleteTask = (id) => { 
+    if (confirm('Are you sure you want to delete this task?')) {
+      api.deleteTask(id);
+      refresh();
+    }
+  };
+
+  const moveTask = (task, direction) => {
+    const currentIndex = columns.findIndex(c => c.key === task.status);
+    const nextIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
+    
+    if (nextIndex < 0 || nextIndex >= columns.length) return;
+    
+    api.updateTask(task.id, { status: columns[nextIndex].key });
+    refresh();
   };
 
   const stats = useMemo(() => {
     const total = tasks.length;
-    const byStatus = columns.reduce((acc, c) => (acc[c.key] = tasks.filter(t => t.status === c.key).length, acc), {});
-    const avg = total ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / total) : 0;
+    const byStatus = columns.reduce((acc, c) => {
+      acc[c.key] = tasks.filter(t => t.status === c.key).length;
+      return acc;
+    }, {});
+    const avg = total ? Math.round(tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / total) : 0;
     return { total, byStatus, avg };
   }, [tasks]);
 
   return (
     <div className="container">
-      <button className="btn" onClick={onBack}>← Back</button>
+      <button className="btn" onClick={onBack}>← Back to Projects</button>
       <div className="flex space-between" style={{ marginTop: 12, marginBottom: 8 }}>
         <div>
           <h2>{project?.name}</h2>
-          <p className="muted">{project?.description || '—'}</p>
+          <p className="muted">{project?.description || 'No description'}</p>
         </div>
         <div className="flex">
-          <button className="btn" onClick={() => setShowMembers(true)}>Team ({project?.members.length})</button>
-          <button className="btn primary" onClick={() => { setEditing(null); setShowForm(true); }}>New Task</button>
+          <button className="btn" onClick={() => setShowMembers(true)}>
+            Team ({project?.members.length})
+          </button>
+          <button className="btn primary" onClick={() => { 
+            setEditing(null); 
+            setShowForm(true); 
+          }}>
+            + New Task
+          </button>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="grid cols-3">
-          <div><label>Search</label><input className="input" placeholder="Title/description" value={query} onChange={e => setQuery(e.target.value)} /></div>
-          <div><label>Status</label>
-            <select className="select" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
-              <option value="">All</option>{columns.map(c => <option key={c.key} value={c.key}>{c.title}</option>)}
+          <div>
+            <label>Search Tasks</label>
+            <input 
+              className="input" 
+              placeholder="Search by title or description..." 
+              value={query} 
+              onChange={e => setQuery(e.target.value)} 
+            />
+          </div>
+          <div>
+            <label>Status Filter</label>
+            <select 
+              className="select" 
+              value={filter.status} 
+              onChange={e => setFilter({ ...filter, status: e.target.value })}
+            >
+              <option value="">All Statuses</option>
+              {columns.map(c => <option key={c.key} value={c.key}>{c.title}</option>)}
             </select>
           </div>
-          <div><label>Category</label><input className="input" value={filter.category} onChange={e => setFilter({ ...filter, category: e.target.value })} placeholder="e.g. Frontend" /></div>
+          <div>
+            <label>Category Filter</label>
+            <input 
+              className="input" 
+              value={filter.category} 
+              onChange={e => setFilter({ ...filter, category: e.target.value })} 
+              placeholder="Filter by category..." 
+            />
+          </div>
         </div>
         <div className="flex" style={{ gap: 24, marginTop: 12 }}>
-          <span className="badge">Total: {stats.total}</span>
-          <span className="badge">Avg Progress: {stats.avg}%</span>
-          {columns.map(c => <span key={c.key} className="badge">{c.title}: {stats.byStatus[c.key] || 0}</span>)}
+          <span className="badge">Total Tasks: {stats.total}</span>
+          <span className="badge">Average Progress: {stats.avg}%</span>
+          {columns.map(c => (
+            <span key={c.key} className="badge">
+              {c.title}: {stats.byStatus[c.key] || 0}
+            </span>
+          ))}
         </div>
       </div>
 
-      <Kanban tasks={tasks} onEdit={(t) => { setEditing(t); setShowForm(true); }} onDelete={del} onMove={move} />
+      <Kanban 
+        tasks={tasks} 
+        onEdit={(task) => { 
+          setEditing(task); 
+          setShowForm(true); 
+        }} 
+        onDelete={deleteTask} 
+        onMove={moveTask} 
+      />
 
       {showForm && (
         <div className="modal" onClick={() => setShowForm(false)}>
-          <div className="card" onClick={e => e.stopPropagation()}>
-            <TaskForm initial={editing || {}} onSubmit={(data) => editing ? save(data) : create(data)} onCancel={() => setShowForm(false)} />
+          <div className="card" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <TaskForm 
+              initial={editing || {}} 
+              onSubmit={(data) => editing ? saveTask(data) : createTask(data)} 
+              onCancel={() => setShowForm(false)} 
+            />
           </div>
         </div>
       )}
 
       {showMembers && (
         <div className="modal" onClick={() => setShowMembers(false)}>
-          <div className="card" onClick={e => e.stopPropagation()}>
+          <div className="card" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <h3>Team Members</h3>
-            <p className="muted">Add existing users by search (users are stored locally for demo).</p>
-            <MemberPicker onPick={(u) => { api.addMember(projectId, u.id); setProject(api.projectsForUser(user.id).find(p => p.id === projectId)); setShowMembers(false); }} />
+            <p className="muted">Add existing users by searching below:</p>
+            <MemberPicker 
+              onPick={(user) => { 
+                api.addMember(projectId, user.id); 
+                setProject(api.projectsForUser(user.id).find(p => p.id === projectId)); 
+                setShowMembers(false); 
+              }} 
+            />
             <table className="table" style={{ marginTop: 12 }}>
-              <thead><tr><th>Name</th><th>Email</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                </tr>
+              </thead>
               <tbody>
-                {project?.members.map(uid_ => api.listUsers('').find(u => u.id === uid_)).map(u => (
-                  <tr key={u.id}><td>{u.name}</td><td className="muted">{u.email}</td></tr>
-                ))}
+                {project?.members.map(memberId => {
+                  const user = api.listUsers('').find(u => u.id === memberId);
+                  return user ? (
+                    <tr key={user.id}>
+                      <td>{user.name}</td>
+                      <td className="muted">{user.email}</td>
+                    </tr>
+                  ) : null;
+                })}
               </tbody>
             </table>
             <div className="flex" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
@@ -437,17 +655,41 @@ const ProjectPage = ({ projectId, onBack }) => {
 const App = () => {
   const { user } = useAuth();
   const [view, setView] = useState('list');
-  const [pid, setPid] = useState(null);
-  useEffect(() => { if (!user) { setView('auth'); } else { setView('list'); } }, [user?.id]);
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  
+  useEffect(() => { 
+    if (!user) { 
+      setView('auth'); 
+    } else { 
+      setView('list'); 
+    } 
+  }, [user?.id]);
+
   return (
     <>
       <Navbar />
       {view === 'auth' && <Login onDone={() => setView('list')} />}
-      {view === 'list' && user && <ProjectList onOpen={(id) => { setPid(id); setView('project') }} />}
-      {view === 'project' && user && <ProjectPage projectId={pid} onBack={() => setView('list')} />}
+      {view === 'list' && user && (
+        <ProjectList 
+          onOpen={(projectId) => { 
+            setCurrentProjectId(projectId); 
+            setView('project'); 
+          }} 
+        />
+      )}
+      {view === 'project' && user && (
+        <ProjectPage 
+          projectId={currentProjectId} 
+          onBack={() => setView('list')} 
+        />
+      )}
     </>
   );
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<AuthProvider><App /></AuthProvider>);
+root.render(
+  <AuthProvider>
+    <App />
+  </AuthProvider>
+);
