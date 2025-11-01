@@ -107,7 +107,7 @@ const api = {
   createTask(data, userId) { 
     const db = this._read(); 
     const task = { 
-      id: uid(), // ✅ Fixed: using the global uid function directly
+      id: uid(),
       projectId: data.projectId,
       title: data.title,
       description: data.description,
@@ -178,17 +178,46 @@ function AuthProvider({ children }) {
 }
 
 /******************** Components ********************/
-const Navbar = () => {
+const Navbar = ({ currentView, onNavigate }) => {
   const { user, logout } = useAuth();
+  
+  if (!user) return null;
+  
   return (
     <div className="nav">
       <div className="nav-inner">
-        <div className="flex"><span className="brand">TaskFlow</span></div>
         <div className="flex">
-          {user ? (<>
-            <span className="muted">{user.name}</span>
-            <button className="btn" onClick={logout}>Logout</button>
-          </>) : null}
+          <span className="brand">TaskFlow</span>
+          <div className="nav-links">
+            <button 
+              className={`nav-link ${currentView === 'home' ? 'active' : ''}`}
+              onClick={() => onNavigate('home')}
+            >
+              Home
+            </button>
+            <button 
+              className={`nav-link ${currentView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => onNavigate('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button 
+              className={`nav-link ${currentView === 'projects' ? 'active' : ''}`}
+              onClick={() => onNavigate('projects')}
+            >
+              Projects
+            </button>
+            <button 
+              className={`nav-link ${currentView === 'profile' ? 'active' : ''}`}
+              onClick={() => onNavigate('profile')}
+            >
+              Profile
+            </button>
+          </div>
+        </div>
+        <div className="flex">
+          <span className="muted">{user.name}</span>
+          <button className="btn" onClick={logout}>Logout</button>
         </div>
       </div>
     </div>
@@ -256,22 +285,251 @@ const RegisterInline = ({ onDone }) => {
   );
 };
 
-const ProjectList = ({ onOpen, onCreate }) => {
+/******************** Home Component ********************/
+const Home = ({ onNavigate }) => {
+  const { user } = useAuth();
+  
+  return (
+    <div className="container">
+      <div className="hero">
+        <h1>Welcome to TaskFlow</h1>
+        <p className="hero-subtitle">Streamline your project management and task tracking</p>
+        
+        {user ? (
+          <div className="grid cols-3" style={{ marginTop: '2rem' }}>
+            <div className="card feature-card">
+              <h3>📊 Dashboard</h3>
+              <p>Get an overview of all your projects and tasks</p>
+              <button className="btn primary" onClick={() => onNavigate('dashboard')}>
+                View Dashboard
+              </button>
+            </div>
+            <div className="card feature-card">
+              <h3>📂 Projects</h3>
+              <p>Manage your projects and collaborate with your team</p>
+              <button className="btn primary" onClick={() => onNavigate('projects')}>
+                Manage Projects
+              </button>
+            </div>
+            <div className="card feature-card">
+              <h3>👤 Profile</h3>
+              <p>Update your account information and preferences</p>
+              <button className="btn primary" onClick={() => onNavigate('profile')}>
+                View Profile
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="card" style={{ maxWidth: '400px', margin: '2rem auto' }}>
+            <h3>Get Started</h3>
+            <p>Please log in or create an account to start managing your tasks.</p>
+            <div className="flex" style={{ gap: '12px', marginTop: '1rem' }}>
+              <button className="btn primary" onClick={() => onNavigate('auth')}>
+                Login
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/******************** Dashboard Component ********************/
+const Dashboard = () => {
+  const { user } = useAuth();
+  const [projects, setProjects] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
+  const [stats, setStats] = useState({ totalProjects: 0, totalTasks: 0, completedTasks: 0, inProgressTasks: 0 });
+
+  useEffect(() => {
+    if (user) {
+      const userProjects = api.projectsForUser(user.id);
+      setProjects(userProjects);
+      
+      // Get all tasks across all projects
+      const tasks = userProjects.flatMap(project => 
+        api.tasks({ projectId: project.id })
+      );
+      setAllTasks(tasks);
+      
+      // Calculate stats
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(t => t.status === 'done').length;
+      const inProgressTasks = tasks.filter(t => t.status === 'in_progress' || t.status === 'review').length;
+      
+      setStats({
+        totalProjects: userProjects.length,
+        totalTasks,
+        completedTasks,
+        inProgressTasks
+      });
+    }
+  }, [user]);
+
+  const recentTasks = allTasks
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 5);
+
+  return (
+    <div className="container">
+      <h2>Dashboard</h2>
+      
+      {/* Stats Overview */}
+      <div className="grid cols-4" style={{ marginBottom: '2rem' }}>
+        <div className="card stat-card">
+          <h3>{stats.totalProjects}</h3>
+          <p className="muted">Total Projects</p>
+        </div>
+        <div className="card stat-card">
+          <h3>{stats.totalTasks}</h3>
+          <p className="muted">Total Tasks</p>
+        </div>
+        <div className="card stat-card">
+          <h3>{stats.inProgressTasks}</h3>
+          <p className="muted">In Progress</p>
+        </div>
+        <div className="card stat-card">
+          <h3>{stats.completedTasks}</h3>
+          <p className="muted">Completed</p>
+        </div>
+      </div>
+
+      <div className="grid cols-2">
+        {/* Recent Projects */}
+        <div className="card">
+          <h3>Recent Projects</h3>
+          {projects.length === 0 ? (
+            <p className="muted">No projects yet</p>
+          ) : (
+            <div className="list">
+              {projects.slice(0, 5).map(project => (
+                <div key={project.id} className="list-item">
+                  <div>
+                    <strong>{project.name}</strong>
+                    <p className="muted">{project.description || 'No description'}</p>
+                  </div>
+                  <span className="badge">
+                    {allTasks.filter(t => t.projectId === project.id).length} tasks
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Tasks */}
+        <div className="card">
+          <h3>Recent Tasks</h3>
+          {recentTasks.length === 0 ? (
+            <p className="muted">No tasks yet</p>
+          ) : (
+            <div className="list">
+              {recentTasks.map(task => (
+                <div key={task.id} className="list-item">
+                  <div>
+                    <strong>{task.title}</strong>
+                    <p className="muted">{task.category} • {task.priority}</p>
+                  </div>
+                  <span className={`pill ${task.status}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/******************** Profile Component ********************/
+const Profile = () => {
+  const { user } = useAuth();
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [message, setMessage] = useState('');
+
+  const handleSave = () => {
+    // In a real app, you would update the user profile via API
+    setMessage('Profile updated successfully!');
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="container">
+      <div className="card" style={{ maxWidth: '500px' }}>
+        <h2>Profile Settings</h2>
+        
+        {message && (
+          <div style={{ 
+            background: '#d4edda', 
+            color: '#155724', 
+            padding: '12px', 
+            borderRadius: '4px',
+            marginBottom: '1rem'
+          }}>
+            {message}
+          </div>
+        )}
+
+        <div className="grid cols-2">
+          <div>
+            <label>Name</label>
+            <input 
+              className="input" 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+            />
+          </div>
+          <div>
+            <label>Email</label>
+            <input 
+              className="input" 
+              type="email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+            />
+          </div>
+        </div>
+
+        <div style={{ marginTop: '1rem' }}>
+          <label>Member Since</label>
+          <p className="muted">
+            {new Date(user.createdAt || Date.now()).toLocaleDateString()}
+          </p>
+        </div>
+
+        <div className="flex" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button className="btn primary" onClick={handleSave}>
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/******************** Project Components ********************/
+const ProjectList = ({ onOpenProject }) => {
   const { user } = useAuth();
   const [projects, setProjects] = useState(() => api.projectsForUser(user.id));
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
 
-  const create = () => {
+  const createProject = () => {
     if (!name.trim()) return;
     const p = api.createProject({ name, description: desc }, user.id);
     setProjects(api.projectsForUser(user.id));
     setName(''); setDesc(''); setShowNew(false);
-    onOpen(p.id);
+    onOpenProject(p.id);
   };
 
-  const del = (id, name) => {
+  const deleteProject = (id, name) => {
     if (confirm(`Delete project "${name}"?`)) {
       api.deleteProject(id);
       setProjects(api.projectsForUser(user.id));
@@ -282,23 +540,46 @@ const ProjectList = ({ onOpen, onCreate }) => {
     <div className="container">
       <div className="flex space-between" style={{ margin: '12px 0' }}>
         <h2>Projects</h2>
-        <div className="flex"><button className="btn primary" onClick={() => setShowNew(true)}>New Project</button></div>
+        <div className="flex">
+          <button className="btn primary" onClick={() => setShowNew(true)}>
+            New Project
+          </button>
+        </div>
       </div>
-      {projects.length === 0 && <p className="muted">No projects yet. Create your first one.</p>}
+      
+      {projects.length === 0 && (
+        <div className="card">
+          <p className="muted">No projects yet. Create your first one to get started.</p>
+        </div>
+      )}
+      
       <div className="grid cols-3">
         {projects.map(p => (
           <div key={p.id} className="card">
             <div className="flex space-between">
               <h3>{p.name}</h3>
-              <button className="icon-btn" title="Delete Project" onClick={() => del(p.id, p.name)}>🗑️</button>
+              <button 
+                className="icon-btn" 
+                title="Delete Project" 
+                onClick={() => deleteProject(p.id, p.name)}
+              >
+                🗑️
+              </button>
             </div>
             <p className="muted">{p.description || '—'}</p>
             <div className="flex space-between">
               <span className="badge">Members: {p.members.length}</span>
-              <span className="badge">Updated: {new Date(p.updatedAt).toLocaleString()}</span>
+              <span className="badge">
+                Updated: {new Date(p.updatedAt).toLocaleDateString()}
+              </span>
             </div>
             <div style={{ marginTop: 12 }}>
-              <button className="btn primary" onClick={() => onOpen(p.id)}>Open</button>
+              <button 
+                className="btn primary" 
+                onClick={() => onOpenProject(p.id)}
+              >
+                Open Project
+              </button>
             </div>
           </div>
         ))}
@@ -310,17 +591,31 @@ const ProjectList = ({ onOpen, onCreate }) => {
             <h3>New Project</h3>
             <div className="grid cols-2">
               <div>
-                <label>Name</label>
-                <input className="input" value={name} onChange={e => setName(e.target.value)} />
+                <label>Name *</label>
+                <input 
+                  className="input" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Enter project name"
+                />
               </div>
               <div>
                 <label>Description</label>
-                <input className="input" value={desc} onChange={e => setDesc(e.target.value)} />
+                <input 
+                  className="input" 
+                  value={desc} 
+                  onChange={e => setDesc(e.target.value)}
+                  placeholder="Project description"
+                />
               </div>
             </div>
             <div className="flex" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-              <button className="btn" onClick={() => setShowNew(false)}>Cancel</button>
-              <button className="btn primary" onClick={create}>Create</button>
+              <button className="btn" onClick={() => setShowNew(false)}>
+                Cancel
+              </button>
+              <button className="btn primary" onClick={createProject}>
+                Create
+              </button>
             </div>
           </div>
         </div>
@@ -332,20 +627,35 @@ const ProjectList = ({ onOpen, onCreate }) => {
 const MemberPicker = ({ onPick }) => {
   const [q, setQ] = useState('');
   const [res, setRes] = useState([]);
-  useEffect(() => { const t = setTimeout(() => { setRes(api.listUsers(q)); }, 300); return () => clearTimeout(t); }, [q]);
+  useEffect(() => { 
+    const t = setTimeout(() => { setRes(api.listUsers(q)); }, 300); 
+    return () => clearTimeout(t); 
+  }, [q]);
+  
   return (
     <div>
-      <input className="input" placeholder="Search users…" value={q} onChange={e => setQ(e.target.value)} />
+      <input 
+        className="input" 
+        placeholder="Search users…" 
+        value={q} 
+        onChange={e => setQ(e.target.value)} 
+      />
       <div className="grid" style={{ marginTop: 8 }}>
         {res.map(u => (
-          <button key={u.id} className="btn ghost" onClick={() => onPick(u)}>{u.name} <span className="muted">({u.email})</span></button>
+          <button 
+            key={u.id} 
+            className="btn ghost" 
+            onClick={() => onPick(u)}
+          >
+            {u.name} <span className="muted">({u.email})</span>
+          </button>
         ))}
       </div>
     </div>
   );
 };
 
-const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
+const TaskForm = ({ initial = {}, onSubmit, onCancel, projectId }) => {
   const [v, setV] = useState({ 
     title: '', 
     description: '', 
@@ -358,6 +668,7 @@ const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
     ...initial 
   });
   
+  // Reset form when initial task changes
   useEffect(() => {
     if (initial.id) {
       setV(prev => ({ ...prev, ...initial }));
@@ -367,28 +678,48 @@ const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
   const set = (k) => (e) => setV({ ...v, [k]: e.target.type === 'number' ? Number(e.target.value) : e.target.value });
 
   const handleSubmit = () => {
-    // Validate required fields
     if (!v.title.trim()) {
       alert('Task title is required');
       return;
     }
-    onSubmit(v);
+    
+    // Ensure projectId is included for new tasks
+    const taskData = initial.id ? v : { ...v, projectId };
+    onSubmit(taskData);
   };
 
   return (
     <div className="card">
       <h3>{initial.id ? 'Edit Task' : 'New Task'}</h3>
       <div className="grid cols-2">
-        <div><label>Title *</label><input className="input" value={v.title} onChange={set('title')} placeholder="Enter task title" /></div>
-        <div><label>Category</label><input className="input" value={v.category} onChange={set('category')} placeholder="e.g. Frontend" /></div>
-        <div><label>Priority</label>
+        <div>
+          <label>Title *</label>
+          <input 
+            className="input" 
+            value={v.title} 
+            onChange={set('title')} 
+            placeholder="Enter task title" 
+          />
+        </div>
+        <div>
+          <label>Category</label>
+          <input 
+            className="input" 
+            value={v.category} 
+            onChange={set('category')} 
+            placeholder="e.g. Frontend" 
+          />
+        </div>
+        <div>
+          <label>Priority</label>
           <select className="select" value={v.priority} onChange={set('priority')}>
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
           </select>
         </div>
-        <div><label>Status</label>
+        <div>
+          <label>Status</label>
           <select className="select" value={v.status} onChange={set('status')}>
             <option value="backlog">Backlog</option>
             <option value="in_progress">In Progress</option>
@@ -396,13 +727,42 @@ const TaskForm = ({ initial = {}, onSubmit, onCancel }) => {
             <option value="done">Done</option>
           </select>
         </div>
-        <div><label>Due Date</label><input type="date" className="input" value={v.dueDate || ''} onChange={set('dueDate')} /></div>
-        <div><label>Progress (%)</label><input type="number" min="0" max="100" className="input" value={v.progress} onChange={set('progress')} /></div>
-        <div style={{ gridColumn: '1/3' }}><label>Description</label><textarea rows="3" className="input" value={v.description} onChange={set('description')} placeholder="Task description..." /></div>
+        <div>
+          <label>Due Date</label>
+          <input 
+            type="date" 
+            className="input" 
+            value={v.dueDate || ''} 
+            onChange={set('dueDate')} 
+          />
+        </div>
+        <div>
+          <label>Progress (%)</label>
+          <input 
+            type="number" 
+            min="0" 
+            max="100" 
+            className="input" 
+            value={v.progress} 
+            onChange={set('progress')} 
+          />
+        </div>
+        <div style={{ gridColumn: '1/3' }}>
+          <label>Description</label>
+          <textarea 
+            rows="3" 
+            className="input" 
+            value={v.description} 
+            onChange={set('description')} 
+            placeholder="Task description..." 
+          />
+        </div>
       </div>
       <div className="flex" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
         <button className="btn" onClick={onCancel}>Cancel</button>
-        <button className="btn primary" onClick={handleSubmit}>{initial.id ? 'Save' : 'Create'}</button>
+        <button className="btn primary" onClick={handleSubmit}>
+          {initial.id ? 'Save' : 'Create'}
+        </button>
       </div>
     </div>
   );
@@ -420,12 +780,20 @@ const TaskCard = ({ task, onEdit, onDelete, onMove }) => (
       <span style={{ width: Math.max(0, Math.min(100, task.progress)) + '%' }} />
     </div>
     <div className="flex" style={{ justifyContent: 'space-between', marginTop: 8 }}>
-      <div className="muted" style={{ fontSize: 12 }}>Assignees: {task.assignees.length}</div>
+      <div className="muted" style={{ fontSize: 12 }}>
+        Assignees: {task.assignees.length}
+      </div>
       <div className="flex">
         <button className="btn small" onClick={() => onEdit(task)}>Edit</button>
         <button className="btn small" onClick={() => onMove(task, 'left')}>◀</button>
         <button className="btn small" onClick={() => onMove(task, 'right')}>▶</button>
-        <button className="btn small" onClick={() => onDelete(task.id)} style={{ borderColor: 'transparent', background: '#2b1121', color: '#fca5a5' }}>Delete</button>
+        <button 
+          className="btn small" 
+          onClick={() => onDelete(task.id)}
+          style={{ borderColor: 'transparent', background: '#2b1121', color: '#fca5a5' }}
+        >
+          Delete
+        </button>
       </div>
     </div>
   </div>
@@ -442,9 +810,18 @@ const Kanban = ({ tasks, onEdit, onDelete, onMove }) => (
   <div className="kanban">
     {columns.map(col => (
       <div key={col.key} className="column">
-        <h4>{col.title} <span className="badge">{tasks.filter(t => t.status === col.key).length}</span></h4>
+        <h4>
+          {col.title} 
+          <span className="badge">{tasks.filter(t => t.status === col.key).length}</span>
+        </h4>
         {tasks.filter(t => t.status === col.key).map(t => (
-          <TaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} onMove={onMove} />
+          <TaskCard 
+            key={t.id} 
+            task={t} 
+            onEdit={onEdit} 
+            onDelete={onDelete} 
+            onMove={onMove} 
+          />
         ))}
       </div>
     ))}
@@ -453,15 +830,22 @@ const Kanban = ({ tasks, onEdit, onDelete, onMove }) => (
 
 const ProjectPage = ({ projectId, onBack }) => {
   const { user } = useAuth();
-  const [project, setProject] = useState(() => api.projectsForUser(user.id).find(p => p.id === projectId));
+  const [project, setProject] = useState(() => 
+    api.projectsForUser(user.id).find(p => p.id === projectId)
+  );
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState({ status: '', category: '' });
-  const [tasks, setTasks] = useState(() => api.tasks({ projectId }));
+  const [tasks, setTasks] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
 
-  const refresh = () => {
+  // Load tasks when component mounts or filters change
+  useEffect(() => {
+    refreshTasks();
+  }, [query, filter.status, filter.category]);
+
+  const refreshTasks = () => {
     const filteredTasks = api.tasks({ 
       projectId, 
       q: query, 
@@ -471,15 +855,13 @@ const ProjectPage = ({ projectId, onBack }) => {
     setTasks(filteredTasks);
   };
 
-  useEffect(() => { 
-    refresh();
-  }, [query, filter.status, filter.category]);
-
   const createTask = (payload) => { 
     try {
-      api.createTask(payload, user.id);
+      // Ensure projectId is included
+      const taskData = { ...payload, projectId };
+      api.createTask(taskData, user.id);
       setShowForm(false);
-      refresh();
+      refreshTasks();
     } catch (error) {
       console.error('Error creating task:', error);
       alert('Failed to create task: ' + error.message);
@@ -491,7 +873,7 @@ const ProjectPage = ({ projectId, onBack }) => {
       api.updateTask(editing.id, payload);
       setEditing(null);
       setShowForm(false);
-      refresh();
+      refreshTasks();
     } catch (error) {
       console.error('Error updating task:', error);
       alert('Failed to update task: ' + error.message);
@@ -501,7 +883,7 @@ const ProjectPage = ({ projectId, onBack }) => {
   const deleteTask = (id) => { 
     if (confirm('Are you sure you want to delete this task?')) {
       api.deleteTask(id);
-      refresh();
+      refreshTasks();
     }
   };
 
@@ -512,7 +894,7 @@ const ProjectPage = ({ projectId, onBack }) => {
     if (nextIndex < 0 || nextIndex >= columns.length) return;
     
     api.updateTask(task.id, { status: columns[nextIndex].key });
-    refresh();
+    refreshTasks();
   };
 
   const stats = useMemo(() => {
@@ -528,6 +910,7 @@ const ProjectPage = ({ projectId, onBack }) => {
   return (
     <div className="container">
       <button className="btn" onClick={onBack}>← Back to Projects</button>
+      
       <div className="flex space-between" style={{ marginTop: 12, marginBottom: 8 }}>
         <div>
           <h2>{project?.name}</h2>
@@ -537,15 +920,19 @@ const ProjectPage = ({ projectId, onBack }) => {
           <button className="btn" onClick={() => setShowMembers(true)}>
             Team ({project?.members.length})
           </button>
-          <button className="btn primary" onClick={() => { 
-            setEditing(null); 
-            setShowForm(true); 
-          }}>
+          <button 
+            className="btn primary" 
+            onClick={() => { 
+              setEditing(null); 
+              setShowForm(true); 
+            }}
+          >
             + New Task
           </button>
         </div>
       </div>
 
+      {/* Filters and Stats */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="grid cols-3">
           <div>
@@ -565,7 +952,9 @@ const ProjectPage = ({ projectId, onBack }) => {
               onChange={e => setFilter({ ...filter, status: e.target.value })}
             >
               <option value="">All Statuses</option>
-              {columns.map(c => <option key={c.key} value={c.key}>{c.title}</option>)}
+              {columns.map(c => (
+                <option key={c.key} value={c.key}>{c.title}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -589,6 +978,7 @@ const ProjectPage = ({ projectId, onBack }) => {
         </div>
       </div>
 
+      {/* Kanban Board */}
       <Kanban 
         tasks={tasks} 
         onEdit={(task) => { 
@@ -599,18 +989,21 @@ const ProjectPage = ({ projectId, onBack }) => {
         onMove={moveTask} 
       />
 
+      {/* Task Form Modal */}
       {showForm && (
         <div className="modal" onClick={() => setShowForm(false)}>
           <div className="card" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <TaskForm 
               initial={editing || {}} 
-              onSubmit={(data) => editing ? saveTask(data) : createTask(data)} 
-              onCancel={() => setShowForm(false)} 
+              onSubmit={editing ? saveTask : createTask}
+              onCancel={() => setShowForm(false)}
+              projectId={projectId}
             />
           </div>
         </div>
       )}
 
+      {/* Team Members Modal */}
       {showMembers && (
         <div className="modal" onClick={() => setShowMembers(false)}>
           <div className="card" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
@@ -652,35 +1045,50 @@ const ProjectPage = ({ projectId, onBack }) => {
   );
 };
 
+/******************** Main App Component ********************/
 const App = () => {
   const { user } = useAuth();
-  const [view, setView] = useState('list');
+  const [currentView, setCurrentView] = useState('home');
   const [currentProjectId, setCurrentProjectId] = useState(null);
-  
+
+  // Redirect to auth if not logged in
   useEffect(() => { 
     if (!user) { 
-      setView('auth'); 
-    } else { 
-      setView('list'); 
-    } 
-  }, [user?.id]);
+      setCurrentView('auth'); 
+    } else if (currentView === 'auth') {
+      setCurrentView('home');
+    }
+  }, [user]);
+
+  const handleNavigate = (view) => {
+    setCurrentView(view);
+  };
+
+  const handleOpenProject = (projectId) => {
+    setCurrentProjectId(projectId);
+    setCurrentView('project');
+  };
 
   return (
     <>
-      <Navbar />
-      {view === 'auth' && <Login onDone={() => setView('list')} />}
-      {view === 'list' && user && (
-        <ProjectList 
-          onOpen={(projectId) => { 
-            setCurrentProjectId(projectId); 
-            setView('project'); 
-          }} 
+      {user && (
+        <Navbar 
+          currentView={currentView} 
+          onNavigate={handleNavigate} 
         />
       )}
-      {view === 'project' && user && (
+      
+      {currentView === 'auth' && <Login onDone={() => setCurrentView('home')} />}
+      {currentView === 'home' && <Home onNavigate={handleNavigate} />}
+      {currentView === 'dashboard' && <Dashboard />}
+      {currentView === 'profile' && <Profile />}
+      {currentView === 'projects' && (
+        <ProjectList onOpenProject={handleOpenProject} />
+      )}
+      {currentView === 'project' && (
         <ProjectPage 
           projectId={currentProjectId} 
-          onBack={() => setView('list')} 
+          onBack={() => setCurrentView('projects')} 
         />
       )}
     </>
