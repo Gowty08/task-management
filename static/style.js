@@ -11,7 +11,7 @@ const seedIfEmpty = () => {
   if (seeded) return;
   const userId = uid();
   const demo = {
-    users: [{ id: userId, name: 'Demo User', email: 'demo@task.app', password: 'demo' }],
+    users: [{ id: userId, name: 'Demo User', email: 'demo@task.app', password: 'demo', createdAt: Date.now() }],
     session: { token: uid(), userId },
     projects: [
       { id: uid(), name: 'Website Revamp', description: 'New marketing site', owner: userId, members: [userId], createdAt: Date.now(), updatedAt: Date.now() },
@@ -50,23 +50,59 @@ seedIfEmpty();
 const api = {
   _read() { return load('tms_data', { users: [], session: null, projects: [], tasks: [] }); },
   _write(data) { save('tms_data', data); },
+  
   register({ name, email, password }) {
     const db = this._read();
     if (db.users.some(u => u.email.toLowerCase() === email.toLowerCase())) throw new Error('Email already registered');
-    const user = { id: uid(), name, email, password }; db.users.push(user);
-    db.session = { token: uid(), userId: user.id }; this._write(db); return { token: db.session.token, user };
+    const user = { id: uid(), name, email, password, createdAt: Date.now() }; 
+    db.users.push(user);
+    db.session = { token: uid(), userId: user.id }; 
+    this._write(db); 
+    return { token: db.session.token, user };
   },
+  
   login({ email, password }) {
     const db = this._read();
     const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
     if (!user) throw new Error('Invalid credentials');
-    db.session = { token: uid(), userId: user.id }; this._write(db); return { token: db.session.token, user };
+    db.session = { token: uid(), userId: user.id }; 
+    this._write(db); 
+    return { token: db.session.token, user };
   },
+  
   logout() { const db = this._read(); db.session = null; this._write(db); },
+  
   me() { const db = this._read(); if (!db.session) return null; return db.users.find(u => u.id === db.session.userId) || null; },
-  listUsers(q) { const db = this._read(); if (!q) return db.users; const r = new RegExp(q, 'i'); return db.users.filter(u => r.test(u.name) || r.test(u.email)); },
+  
+  updateProfile(userId, updates) {
+    const db = this._read();
+    const userIndex = db.users.findIndex(u => u.id === userId);
+    if (userIndex === -1) throw new Error('User not found');
+    
+    // Check if email is already taken by another user
+    if (updates.email && db.users.some(u => u.id !== userId && u.email.toLowerCase() === updates.email.toLowerCase())) {
+      throw new Error('Email already taken');
+    }
+    
+    db.users[userIndex] = { ...db.users[userIndex], ...updates };
+    this._write(db);
+    
+    // Return updated user
+    return db.users[userIndex];
+  },
+  
+  listUsers(q) { 
+    const db = this._read(); 
+    if (!q) return db.users; 
+    const r = new RegExp(q, 'i'); 
+    return db.users.filter(u => r.test(u.name) || r.test(u.email)); 
+  },
 
-  projectsForUser(uid) { const db = this._read(); return db.projects.filter(p => p.owner === uid || p.members.includes(uid)).sort((a, b) => b.updatedAt - a.updatedAt); },
+  projectsForUser(uid) { 
+    const db = this._read(); 
+    return db.projects.filter(p => p.owner === uid || p.members.includes(uid)).sort((a, b) => b.updatedAt - a.updatedAt); 
+  },
+  
   createProject({ name, description }, userId) {
     const db = this._read();
     const p = {
@@ -82,6 +118,7 @@ const api = {
     this._write(db);
     return p;
   },
+  
   addMember(projectId, userId) { 
     const db = this._read(); 
     const p = db.projects.find(p => p.id === projectId); 
@@ -171,10 +208,38 @@ const useAuth = () => useContext(AuthCtx);
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(() => api.me());
-  const login = (payload) => { const { user } = api.login(payload); setUser(user); };
-  const register = (payload) => { const { user } = api.register(payload); setUser(user); };
-  const logout = () => { api.logout(); setUser(null); };
-  return <AuthCtx.Provider value={{ user, login, register, logout }}>{children}</AuthCtx.Provider>;
+  
+  const login = (payload) => { 
+    const { user } = api.login(payload); 
+    setUser(user); 
+  };
+  
+  const register = (payload) => { 
+    const { user } = api.register(payload); 
+    setUser(user); 
+  };
+  
+  const logout = () => { 
+    api.logout(); 
+    setUser(null); 
+  };
+  
+  const updateProfile = (updates) => {
+    if (!user) return;
+    try {
+      const updatedUser = api.updateProfile(user.id, updates);
+      setUser(updatedUser);
+      return updatedUser;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  return (
+    <AuthCtx.Provider value={{ user, login, register, logout, updateProfile }}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }
 
 /******************** Components ********************/
@@ -229,7 +294,16 @@ const Login = ({ onDone }) => {
   const [email, setEmail] = useState('demo@task.app');
   const [password, setPassword] = useState('demo');
   const [err, setErr] = useState('');
-  const submit = (e) => { e.preventDefault(); try { login({ email, password }); onDone(); } catch (ex) { setErr(ex.message) } };
+  const submit = (e) => { 
+    e.preventDefault(); 
+    try { 
+      login({ email, password }); 
+      onDone(); 
+    } catch (ex) { 
+      setErr(ex.message) 
+    } 
+  };
+  
   return (
     <div className="auth">
       <div className="card">
@@ -259,7 +333,16 @@ const RegisterInline = ({ onDone }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
-  const submit = (e) => { e.preventDefault(); try { register({ name, email, password }); onDone(); } catch (ex) { setErr(ex.message) } };
+  const submit = (e) => { 
+    e.preventDefault(); 
+    try { 
+      register({ name, email, password }); 
+      onDone(); 
+    } catch (ex) { 
+      setErr(ex.message) 
+    } 
+  };
+  
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3>Create a new account</h3>
@@ -446,15 +529,39 @@ const Dashboard = () => {
 
 /******************** Profile Component ********************/
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  const handleSave = () => {
-    // In a real app, you would update the user profile via API
-    setMessage('Profile updated successfully!');
-    setTimeout(() => setMessage(''), 3000);
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError('Name is required');
+      return;
+    }
+    
+    if (!email.trim()) {
+      setError('Email is required');
+      return;
+    }
+
+    try {
+      await updateProfile({ name: name.trim(), email: email.trim() });
+      setMessage('Profile updated successfully!');
+      setError('');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      setError(err.message);
+      setMessage('');
+    }
   };
 
   if (!user) return null;
@@ -476,9 +583,21 @@ const Profile = () => {
           </div>
         )}
 
+        {error && (
+          <div style={{ 
+            background: '#f8d7da', 
+            color: '#721c24', 
+            padding: '12px', 
+            borderRadius: '4px',
+            marginBottom: '1rem'
+          }}>
+            {error}
+          </div>
+        )}
+
         <div className="grid cols-2">
           <div>
-            <label>Name</label>
+            <label>Name *</label>
             <input 
               className="input" 
               value={name} 
@@ -486,7 +605,7 @@ const Profile = () => {
             />
           </div>
           <div>
-            <label>Email</label>
+            <label>Email *</label>
             <input 
               className="input" 
               type="email" 
@@ -530,7 +649,7 @@ const ProjectList = ({ onOpenProject }) => {
   };
 
   const deleteProject = (id, name) => {
-    if (confirm(`Delete project "${name}"?`)) {
+    if (confirm(`Delete project "${name}"? This will also delete all tasks in this project.`)) {
       api.deleteProject(id);
       setProjects(api.projectsForUser(user.id));
     }
